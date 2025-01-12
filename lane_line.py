@@ -8,17 +8,17 @@ right_fit_history = deque(maxlen=10)
 
 def smooth_fit(fit_history, new_fit):
     """Smooth the fit by averaging over the fit history."""
-    if new_fit is not None:
+    if new_fit is not None and len(new_fit) in [2, 3]:
         fit_history.append(new_fit)
     if len(fit_history) > 0:
-        return np.mean(fit_history, axis=0)
+        return np.mean(np.array(fit_history), axis=0)
     return None
 
 def apply_color_threshold(frame):
     hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
-    white_lower = np.array([0, 0, 180], dtype=np.uint8)  # Adjusted threshold for white
-    white_upper = np.array([255, 80, 255], dtype=np.uint8)
-    yellow_lower = np.array([15, 70, 100], dtype=np.uint8)  # Adjusted threshold for yellow
+    white_lower = np.array([0, 0, 200], dtype=np.uint8)  # Adjusted threshold for white
+    white_upper = np.array([255, 50, 255], dtype=np.uint8)
+    yellow_lower = np.array([15, 90, 100], dtype=np.uint8)  # Adjusted threshold for yellow
     yellow_upper = np.array([35, 255, 255], dtype=np.uint8)
     white_mask = cv2.inRange(hsv, white_lower, white_upper)
     yellow_mask = cv2.inRange(hsv, yellow_lower, yellow_upper)
