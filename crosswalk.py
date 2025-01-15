@@ -85,238 +85,266 @@ def white_mask(frame_bgr):
 
     return mask
 
-#Function that defines the polygon region of interest
-def regionOfInterest(img, polygon):
-    mask = np.zeros_like(img)
-    x1, y1 = polygon[0]
-    x2, y2 = polygon[1]
-    x3, y3 = polygon[2]
-    x4, y4 = polygon[3]
-    m1 = (y2-y1)/(x2-x1)
-    m2 = (y3-y2)/(x3-x2)
-    m3 = (y4-y3)/(x4-x3)
-    m4 = (y4-y1)/(x4-x1)
-    b1 = y1 - m1*x1
-    b2 = y2 - m2*x2
-    b3 = y3 - m3*x3
-    b4 = y4 - m4*x4
-    
-    for i in range(mask.shape[0]):
-        for j in range(mask.shape[1]):
-            if i>=m1*j+b1 and i>=m2*j+b2 and i>=m3*j+b3 and i<=m4*j+b4:
-                mask[i][j] = 1
+def count_row_transitions(row):
+    """
+    Count white<->black transitions in a 1D array of [0,255].
+    """
+    row_bool = (row > 127).astype(np.uint8)
+    diff = np.abs(np.diff(row_bool))
+    transitions = diff.sum()
+    return transitions
 
-    masked_img = np.multiply(mask, img)
-    return masked_img
+def count_column_transitions(col):
+    """
+    Similar logic for a vertical slice (column).
+    """
+    col_bool = (col > 127).astype(np.uint8)
+    diff = np.abs(np.diff(col_bool))
+    transitions = diff.sum()
+    return transitions
 
-#Function that warps the image
-def warp(img, source_points, destination_points, destn_size):
-    matrix = cv2.getPerspectiveTransform(source_points, destination_points)
-    warped_img = cv2.warpPerspective(img, matrix, destn_size)
-    return warped_img
+def validate_strip_region(roi_mask, row_start, row_end, row_transition_counts):
+    """
+    1) Height check
+    2) White coverage check
+    3) Column-based repeated stripe check
 
-#Function that unwarps the image
-def unwarp(img, source_points, destination_points, source_size):
-    matrix = cv2.getPerspectiveTransform(destination_points, source_points)
-    unwarped_img = cv2.warpPerspective(img, matrix, source_size)
-    return unwarped_img
+    Returns (valid, region_height, coverage, stripy_columns).
+    If invalid, 'valid' is False and the other returns might be partial data.
+    """
+    region_height = row_end - row_start + 1
+    if region_height < MIN_BOX_HEIGHT:
+        return (False, region_height, None, None)
 
-#Function that gives the left fit and right fit curves for the lanes in birdeye's view
-def fitCurve(img):
-    histogram = np.sum(img[img.shape[0]//2:,:], axis=0)
-    midpoint = int(histogram.shape[0]/2)
-    leftx_base = np.argmax(histogram[:midpoint])
-    rightx_base = np.argmax(histogram[midpoint:]) + midpoint
-    nwindows = 50
-    margin = 100
-    minpix = 50
-    window_height = int(img.shape[0]/nwindows)
-    y, x = img.nonzero()
-    leftx_current = leftx_base
-    rightx_current = rightx_base
-    left_lane_indices = []
-    right_lane_indices = []
-    
-    for window in range(nwindows):
-        win_y_low = img.shape[0] - (window+1)*window_height
-        win_y_high = img.shape[0] - window*window_height
-        win_xleft_low = leftx_current - margin
-        win_xleft_high = leftx_current + margin
-        win_xright_low = rightx_current - margin
-        win_xright_high = rightx_current + margin
+    h, w = roi_mask.shape[:2]
+    region = roi_mask[row_start:row_end+1, 0:w]
 
-        good_left_indices = ((y >= win_y_low) & (y < win_y_high) & (x >= win_xleft_low) & (x < win_xleft_high)).nonzero()[0]
-        good_right_indices  = ((y >= win_y_low) & (y < win_y_high) & (x >= win_xright_low) & (x < win_xright_high)).nonzero()[0]
-        left_lane_indices.append(good_left_indices)
-        right_lane_indices.append(good_right_indices)
-        if len(good_left_indices) > minpix:
-            leftx_current = int(np.mean(x[good_left_indices]))
-        if len(good_right_indices) > minpix:
-            rightx_current = int(np.mean(x[good_right_indices]))
-        
-    left_lane_indices = np.concatenate(left_lane_indices)
-    right_lane_indices = np.concatenate(right_lane_indices)
-    leftx = x[left_lane_indices]
-    lefty = y[left_lane_indices]
-    rightx = x[right_lane_indices]
-    righty = y[right_lane_indices]
-    left_fit = np.polyfit(lefty, leftx, 2)
-    right_fit = np.polyfit(righty, rightx, 2)
+    total_pixels = region.size
+    white_pixels = cv2.countNonZero(region)
+    coverage = float(white_pixels) / (total_pixels + 1e-6)
 
-    return left_fit, right_fit
+    if coverage < WHITE_COVERAGE_RATIO:
+        return (False, region_height, coverage, None)
 
-#Function that give pixel location of points through which the curves of detected lanes passes
-def findPoints(img_shape, left_fit, right_fit):
-    ploty = np.linspace(0, img_shape[0]-1, img_shape[0])
-    left_fitx = left_fit[0]*ploty**2 + left_fit[1]*ploty + left_fit[2]
-    right_fitx = right_fit[0]*ploty**2 + right_fit[1]*ploty + right_fit[2]
-    pts_left = np.array([np.transpose(np.vstack([left_fitx, ploty]))])
-    pts_right = np.array([np.flipud(np.transpose(np.vstack([right_fitx, ploty])))])
-    return pts_left, pts_right
+    stripy_columns = 0
+    for col_idx in range(w):
+        transitions = count_column_transitions(region[:, col_idx])
+        if transitions >= MIN_TRANSITIONS_PER_COLUMN:
+            stripy_columns += 1
 
-#Function that fills the space between the detected lane curves
-def fillCurves(img_shape, pts_left, pts_right):
-    pts = np.hstack((pts_left, pts_right))
-    img = np.zeros((img_shape[0], img_shape[1], 3), dtype='uint8')
-    cv2.fillPoly(img, np.int_([pts]), (0,0, 255))
-    return img
+    # Must be >= MIN_COLUMN_STRIPES and <= MAX_COLUMN_STRIPES
+    if stripy_columns < MIN_COLUMN_STRIPES or stripy_columns > MAX_COLUMN_STRIPES:
+        return (False, region_height, coverage, stripy_columns)
 
-#Function that converts a one channel image into a three channel image
-def oneToThreeChannel(binary):
-    img = np.zeros((binary.shape[0], binary.shape[1], 3), dtype='uint8')
-    img[:,:,0] = binary
-    img[:,:,1] = binary
-    img[:,:,2] = binary
-    return img
+    return (True, region_height, coverage, stripy_columns)
 
-#Function that draws the curves of detected lanes on an image
-def drawCurves(img, pts_left, pts_right):
-    img = oneToThreeChannel(img)
-    cv2.polylines(img, np.int32([pts_left]), isClosed=False, color=(0,0,255), thickness=10)
-    cv2.polylines(img, np.int32([pts_right]), isClosed=False, color=(0,255,255), thickness=10)
-    return img
+def detect_crosswalk_stripes(frame):
+    """
+    Returns:
+      - output_frame (with bounding box if found)
+      - found (bool): Did we find a crosswalk?
+      - mask (white mask)
+      - stats (dict) containing all relevant measurements from *this frame*
+        so we can print them on-demand (press 'p').
+    """
+    # ROI + White Mask
+    roi = apply_bottom_half_roi(frame)
+    mask = white_mask(roi)
 
-#Function that concatenates various images to one image
-def concatenate(img1, img2, img3, img4, img5):
-    offset = 50
-    img3 = setOffset(img3, offset)
-    img4 = setOffset(img4, offset)
-    img1 = cv2.resize(img1, (950,550), interpolation = cv2.INTER_AREA)
-    img2 = cv2.resize(img2, (330,180), interpolation = cv2.INTER_AREA)
-    img3 = cv2.resize(img3, (165,370), interpolation = cv2.INTER_AREA)
-    img4 = cv2.resize(img4, (165,370), interpolation = cv2.INTER_AREA)
-    result = np.concatenate((img3, img4), axis = 1)
-    result = np.concatenate((img2, result))
-    result = np.concatenate((img1, result), axis = 1)
-    result = np.concatenate((result, img5), axis = 0)
-    return result
+    # Coverage in the ROI
+    total_pixels = mask.size
+    white_pixels = cv2.countNonZero(mask)
+    roi_coverage = float(white_pixels) / (total_pixels + 1e-6)
 
-#Function that outputs the radius of curvature
-def radiusOfCurvature(img, left_fit, right_fit):
-    y_eval = img.shape[0]/2
-    left_radius = ((1 + (2*left_fit[0]*y_eval + left_fit[1])**2)**1.5) / (2*left_fit[0])
-    right_radius = ((1 + (2*right_fit[0]*y_eval + right_fit[1])**2)**1.5) / (2*right_fit[0])
-    avg_radius = (left_radius+right_radius)/2 
-    return round(left_radius,2), round(right_radius,2), round(avg_radius,2)
+    h, w = mask.shape[:2]
+    row_transition_counts = np.zeros(h, dtype=np.int32)
 
-#Function that outputs image containing radius value
-def informationWindow(left_radius, right_radius, radius):
-    window = np.zeros((170, 1280, 3), dtype='uint8')
-    window[:,:,0] = 249
-    window[:,:,1] = 242
-    window[:,:,2] = 227
-    text1 = '(1) : Detected white and yellow markings, (2) : Warped image, (3) : Curve fitting'
-    window = cv2.putText(window, text1, (50,50), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255,0,0), 2, cv2.LINE_AA)
-    text2 = 'Left Curvature : ' + str(left_radius) + ', Right Curvature : ' + str(right_radius)
-    window = cv2.putText(window, text2, (50,100), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255,0,0), 2, cv2.LINE_AA)
-    text3 = 'Average Curvature : ' + str(radius)
-    window = cv2.putText(window, text3, (50,150), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255,0,0), 2, cv2.LINE_AA)
-    return window
+    for row_idx in range(h):
+        row_transition_counts[row_idx] = count_row_transitions(mask[row_idx, :])
 
-#Function that predicts turn
-def addTurnInfo(img, radius):
-    if radius >= 10000:
-        img = cv2.putText(img, 'Go Straight', (50,50), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0,0,255), 2, cv2.LINE_AA)
-    if radius >= 0 and radius < 10000:
-        img = cv2.putText(img, 'Turn Right', (50,50), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0,0,255), 2, cv2.LINE_AA)
-    if radius <= 0:
-        img = cv2.putText(img, 'Turn Left', (50,50), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0,0,255), 2, cv2.LINE_AA)
-    img = cv2.putText(img, '(1)', (1000,50), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255,0,0), 2, cv2.LINE_AA)
-    img = cv2.putText(img, '(2)', (1000,230), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255,0,0), 2, cv2.LINE_AA)
-    img = cv2.putText(img, '(3)', (1165,230), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255,0,0), 2, cv2.LINE_AA)
-    
-    return img
+    crosswalk_found = False
+    start_row = -1
+    end_row = -1
 
-#Function that adds extra blank space in front of the image
-def setOffset(img, offset):
-    blank = np.zeros((img.shape[0], offset, 3), dtype = 'uint8')
-    img = np.concatenate((blank, img), axis = 1)
-    return img
+    final_length_of_run = 0
+    region_height = None
+    region_coverage = None
+    stripy_columns = None
 
-video = cv2.VideoCapture("miamifirstbasic.avi")
-out = cv2.VideoWriter('curve_lane_detection.avi',cv2.VideoWriter_fourcc(*'XVID'), 25, (1280,720))
-print("Generating video output...\n")
+    # ROW check
+    if MIN_ROI_WHITE_COVERAGE <= roi_coverage <= MAX_ROI_WHITE_COVERAGE:
+        # Only do row-based if coverage is in range
+        for i in range(h-1, -1, -1):
+            if row_transition_counts[i] >= MIN_TRANSITIONS_PER_ROW:
+                if end_row == -1:
+                    end_row = i
+                    start_row = i
+                else:
+                    start_row = i
+            else:
+                if end_row != -1:
+                    length_of_run = end_row - start_row + 1
+                    if length_of_run >= CONSECUTIVE_NEEDED:
+                        valid, r_height, r_coverage, s_cols = validate_strip_region(
+                            mask, start_row, end_row, row_transition_counts
+                        )
+                        if valid:
+                            crosswalk_found = True
+                            region_height = r_height
+                            region_coverage = r_coverage
+                            stripy_columns = s_cols
+                            final_length_of_run = length_of_run
+                            break
+                start_row = -1
+                end_row = -1
 
-while True:
-    isTrue, frame = video.read()
-    if isTrue == False:
-        break
-    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-    thresh = cv2.threshold(gray,200,255,cv2.THRESH_BINARY)[1]
-    processed_img = preprocessing(frame)
-    height, width = processed_img.shape
-    polygon = [(int(width*0.15), int(height*0.94)), (int(width*0.45), int(height*0.62)), (int(width*0.58), int(height*0.62)), (int(0.95*width), int(0.94*height))]
-    masked_img = regionOfInterest(processed_img, polygon)
-    source_points = np.float32([[int(width*0.49), int(height*0.62)], [int(width*0.58), int(height*0.62)], [int(width*0.15), int(height*0.94)], [int(0.95*width), int(0.94*height)]])
-    destination_points = np.float32([[0,0], [400,0], [0, 960], [400, 960]])
-    warped_img_size = (400, 960)
-    warped_img_shape = (960, 400)
-    warped_img = warp(masked_img, source_points, destination_points, warped_img_size)
-    kernel = np.ones((11,11), np.uint8)
-    opening = cv2.morphologyEx(warped_img, cv2.MORPH_CLOSE, kernel)
-    left_fit, right_fit = fitCurve(opening)
-    pts_left, pts_right = findPoints(warped_img_shape, left_fit, right_fit)
-    fill_curves = fillCurves(warped_img_shape, pts_left, pts_right)
-    unwarped_fill_curves = unwarp(fill_curves, source_points, destination_points, (width, height))
-    window1 = cv2.addWeighted(frame, 1, unwarped_fill_curves, 1, 0)
-    left_radius, right_radius, avg_radius = radiusOfCurvature(warped_img, left_fit, right_fit)
-    window2 = oneToThreeChannel(thresh)
-    window3 = oneToThreeChannel(warped_img)
-    window4 = drawCurves(warped_img, pts_left, pts_right)
-    window5 = informationWindow(left_radius, right_radius, avg_radius)
-    result = concatenate(window1, window2, window3, window4, window5)
-    result = addTurnInfo(result, avg_radius)
-    out.write(result)
-out.release()
+        # Check final run if not found
+        if not crosswalk_found and end_row != -1:
+            length_of_run = end_row - start_row + 1
+            if length_of_run >= CONSECUTIVE_NEEDED:
+                valid, r_height, r_coverage, s_cols = validate_strip_region(
+                    mask, start_row, end_row, row_transition_counts
+                )
+                if valid:
+                    crosswalk_found = True
+                    region_height = r_height
+                    region_coverage = r_coverage
+                    stripy_columns = s_cols
+                    final_length_of_run = length_of_run
 
-print("Video processing completed. Output saved as 'curve_lane_detection.avi'.")
+    # Draw bounding box if found
+    output = frame.copy()
+    if crosswalk_found and start_row >= 0 and end_row >= 0:
+        y_offset = frame.shape[0] - h
+        box_top = start_row + y_offset
+        box_bottom = end_row + y_offset
 
-print("Video output generated.\n")
+        # Highlight the rectangle with a transparent overlay
+        overlay = output.copy()
+        cv2.rectangle(overlay, (0, box_top), (w-1, box_bottom), (255, 0, 0), -1)  # Filled rectangle (yellow)
+        alpha = 0.4  # Transparency factor
+        output = cv2.addWeighted(overlay, alpha, output, 1 - alpha, 0)
 
+        # Draw the bounding box border on top of the overlay
+        cv2.rectangle(output, (0, box_top), (w-1, box_bottom), (0, 0, 255), 3)
 
-'''PS C:\Users\User\GitHub\lane-detection> & C:/Users/User/IntroToImageProcessing/IntroToImage_env/Scripts/python.exe c:/Users/User/GitHub/lane-detection/crosswalk.py
-Generating video output...
+    # ~~~~ STATS FOR THIS FRAME ~~~~
+    stats = {
+        "found": crosswalk_found,
+        "roi_coverage": roi_coverage,
+        "min_row_t": None,
+        "max_row_t": None,
+        "avg_row_t": None,
+        "length_of_run": final_length_of_run,
+        "region_coverage": region_coverage,
+        "region_height": region_height,
+        "stripy_columns": stripy_columns
+    }
 
-Traceback (most recent call last):
-  File "c:\Users\User\GitHub\lane-detection\crosswalk.py", line 206, in <module>
-    left_fit, right_fit = fitCurve(opening)
-                          ^^^^^^^^^^^^^^^^^
-  File "c:\Users\User\GitHub\lane-detection\crosswalk.py", line 92, in fitCurve
-    left_fit = np.polyfit(lefty, leftx, 2)
-               ^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\Users\User\IntroToImageProcessing\IntroToImage_env\Lib\site-packages\numpy\lib\_polynomial_impl.py", line 636, in polyfit
-    raise TypeError("expected non-empty vector for x")
-TypeError: expected non-empty vector for x
-PS C:\Users\User\GitHub\lane-detection> & C:/Users/User/IntroToImageProcessing/IntroToImage_env/Scripts/python.exe c:/Users/User/GitHub/lane-detection/crosswalk.py
-Generating video output...
+    # If we identified a region, let's fill in row transitions stats
+    if start_row >= 0 and end_row >= 0:
+        region_rows = row_transition_counts[start_row:end_row+1]
+        if region_rows.size > 0:
+            stats["min_row_t"] = np.min(region_rows)
+            stats["max_row_t"] = np.max(region_rows)
+            stats["avg_row_t"] = float(np.mean(region_rows))
 
-Traceback (most recent call last):
-  File "c:\Users\User\GitHub\lane-detection\crosswalk.py", line 206, in <module>
-    left_fit, right_fit = fitCurve(opening)
-                          ^^^^^^^^^^^^^^^^^
-  File "c:\Users\User\GitHub\lane-detection\crosswalk.py", line 92, in fitCurve
-    left_fit = np.polyfit(lefty, leftx, 2)
-               ^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\Users\User\IntroToImageProcessing\IntroToImage_env\Lib\site-packages\numpy\lib\_polynomial_impl.py", line 636, in polyfit
-    raise TypeError("expected non-empty vector for x")
-TypeError: expected non-empty vector for x'''
+    return output, crosswalk_found, mask, stats
+
+def print_crosswalk_stats(stats):
+    """
+    Print the same info as if we just detected a crosswalk,
+    using the stats dictionary from detect_crosswalk_stripes.
+    """
+    found = stats["found"]
+
+    print("\n===== FRAME STATS =====")
+    if found:
+        print("[CROSSWALK DETECTED] Actual Values:")
+    else:
+        print("[NO CROSSWALK DETECTED] Current Frame Values:")
+
+    print(f" - ROI coverage         = {stats['roi_coverage']:.4f} "
+          f"(must be between {MIN_ROI_WHITE_COVERAGE} and {MAX_ROI_WHITE_COVERAGE})")
+
+    # If we don't have region stats, print placeholders
+    if stats["min_row_t"] is None:
+        print(" - Row transitions in region: no region found yet.")
+    else:
+        min_row_t = stats["min_row_t"]
+        max_row_t = stats["max_row_t"]
+        avg_row_t = stats["avg_row_t"]
+        print(f" - Row transitions in region: min={min_row_t}, max={max_row_t}, avg={avg_row_t:.2f} "
+              f"(each row >= {MIN_TRANSITIONS_PER_ROW} to be stripy)")
+
+    length_of_run = stats["length_of_run"]
+    if length_of_run == 0:
+        print(f" - Length of run        = 0 (no consecutive stripy run found; needed >= {CONSECUTIVE_NEEDED})")
+    else:
+        print(f" - Length of run        = {length_of_run} (needed >= {CONSECUTIVE_NEEDED})")
+
+    region_coverage = stats["region_coverage"]
+    region_height = stats["region_height"]
+    stripy_columns = stats["stripy_columns"]
+
+    if region_coverage is None:
+        print(f" - BBox coverage        = None (region not validated)")
+    else:
+        print(f" - BBox coverage        = {region_coverage:.4f} (needed >= {WHITE_COVERAGE_RATIO})")
+
+    if region_height is None:
+        print(f" - BBox height          = None (region not validated; needed >= {MIN_BOX_HEIGHT} px)")
+    else:
+        print(f" - BBox height          = {region_height} px (needed >= {MIN_BOX_HEIGHT} px)")
+
+    if stripy_columns is None:
+        print(f" - Stripy columns       = None (region not validated; needed >= {MIN_COLUMN_STRIPES} and <= {MAX_COLUMN_STRIPES})")
+    else:
+        print(f" - Stripy columns       = {stripy_columns} (needed >= {MIN_COLUMN_STRIPES} && <= {MAX_COLUMN_STRIPES}; col >= {MIN_TRANSITIONS_PER_COLUMN} transitions)")
+
+    print("--------------------------------------------------------\n")
+
+def play_crosswalk_detection(video_path):
+    cap = cv2.VideoCapture(video_path)
+    if not cap.isOpened():
+        print(f"Error opening video {video_path}")
+        return
+
+    while True:
+        ret, frame = cap.read()
+        if not ret:
+            break
+
+        # Resize if needed
+        if frame.shape[1] > 1280:
+            scale = 1280.0 / frame.shape[1]
+            frame = cv2.resize(frame, None, fx=scale, fy=scale)
+
+        # Now detect, capturing the stats
+        result_frame, found, debug_mask, stats = detect_crosswalk_stripes(frame)
+
+        status = "Crosswalk Detected" if found else "No Crosswalk"
+        color = (0,255,0) if found else (0,0,255)
+        cv2.putText(result_frame, status, (10,50),
+                    cv2.FONT_HERSHEY_SIMPLEX, 1.5, color, 3)
+
+        display_result = cv2.resize(result_frame, (800, 500)) 
+        display_mask = cv2.resize(debug_mask, (800, 500))
+
+        cv2.imshow("Crosswalk Detection", display_result)
+        cv2.imshow("White Mask", display_mask)
+
+        # Print stats on-demand or if we found a crosswalk
+        key = cv2.waitKey(30) & 0xFF
+        if key == ord('p') or found:
+            print_crosswalk_stats(stats)
+
+        elif key == ord('q'):
+            break
+
+    cap.release()
+    cv2.destroyAllWindows()
+
+if __name__ == "__main__":
+    video_path = "miamifirstbasic.avi"
+    play_crosswalk_detection(video_path)
