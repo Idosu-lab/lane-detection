@@ -24,5 +24,8 @@ here is a link to download the videos
 https://we.tl/t-2xFaxu9QwW
 we have one more for the night if we decide to do it
 
-# Crosswalk detection
+## Crosswalk detection
 You can just run crosswalk.py file and see the result (it's not related to any other code file and it works just with miamifirstbasic.avi)
+
+## Car detection
+I tried to write code for car detection, but it's not working well (you can see the result by just running it with miamifirstbasic2.avi).
