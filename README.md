@@ -1,31 +1,35 @@
 # lane-detection
-welcome and lets do it 
-this is a test 
-i split the files so it easier to work on 
-first is the statwork
-filters 
-lane_line 
+# 🚗 Lane & Object Detection with OpenCV
 
+This project demonstrates computer vision techniques for **lane detection**, **crosswalk detection**, and basic **vehicle detection** using Python and OpenCV. It processes dashcam-style videos to identify relevant traffic elements, forming the foundation for advanced driver-assistance systems (ADAS).
 
-linefitting and crosswalk are just trying diffrent tihngs for the extras 
+---
 
-ill add a link below to downlaod the videos to work on 
-also 
-i tried the crossealk here are some instrucitions that might help for the next try 
+## 🎯 Features
 
-1. do all that neccesry to detect rectangles 
-2. group them together 
-3. this is the crosswalk 
-4. zise thershould should be pretty big as they take large space 
-5. should be looking for them in the middle lower part of the picure to avoid noise 
-thats it 
+- 🛣️ **Lane Detection**: Detects and highlights lane lines in real-time.
+- 🚶 **Crosswalk Detection**: Identifies zebra crossings by finding grouped white rectangles in specific zones.
+- 🚗 **Basic Car Detection**: Implements experimental car detection from frontal dashcam footage.
+- 🧪 Modular Codebase: Each task is isolated in its own file for clarity and flexibility.
 
-here is a link to download the videos 
-https://we.tl/t-2xFaxu9QwW
-we have one more for the night if we decide to do it
+---
+| File               | Purpose                                  |
+| ------------------ | ---------------------------------------- |
+| `lanedet.py`       | Main script for lane line detection      |
+| `lane_line.py`     | Utility for tracking lane segments       |
+| `linefitting.py`   | Curve and polynomial fitting experiments |
+| `crosswalk.py`     | Independent crosswalk detection module   |
+| `car_detection.py` | Initial attempt at detecting vehicles    |
+| `filters.py`       | Image preprocessing functions            |
+| `startofwork.py`   | Early setup and experimentation          |
 
-## Crosswalk detection
-You can just run crosswalk.py file and see the result (it's not related to any other code file and it works just with miamifirstbasic.avi)
+🛠 Technologies
 
-## Car detection
-I tried to write code for car detection, but it's not working well (you can see the result by just running it with miamifirstbasic2.avi).
+Python 3.x
+OpenCV
+NumPy
+👤 Author
+
+Ido.s
+Computer Science Student | Passionate about Computer Vision
+GitHub Profile
