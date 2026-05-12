@@ -11,10 +11,12 @@ Extracts and tracks lane boundaries using an optimized spatial pipeline. The sys
 * **Techniques Used:** CLAHE contrast enhancement, HSL/HSV color masking, Canny Edge Detection, Hough Transform, and 2nd-degree sliding-window polynomial fitting.
 
 **Daytime Detection:**
-![Daytime Lane Detection](Screen%20Shot%202026-05-12%20at%2017.14.21%20PM.jpg)
+<br>
+<img src="Screen Shot 2026-05-12 at 17.14.21 PM.jpg" alt="Daytime Lane Detection" width="800"/>
 
 **Nighttime Detection:**
-![Nighttime Lane Detection](Screen%20Shot%202026-05-12%20at%2017.14.45%20PM.jpg)
+<br>
+<img src="Screen Shot 2026-05-12 at 17.14.45 PM.jpg" alt="Nighttime Lane Detection" width="800"/>
 
 ### 2. Vehicle Detection & Proximity Estimation
 Identifies moving vehicles and estimates their real-world distance to simulate forward collision warnings.
@@ -22,14 +24,16 @@ Identifies moving vehicles and estimates their real-world distance to simulate f
 * **Distance Estimation:** Employs a pinhole camera model, utilizing a fixed focal length and real-world vehicle height approximations to calculate distance in meters. Displays threat levels dynamically (Warning vs. Danger).
 
 **Vehicle Proximity Tracking:**
-![Vehicle Tracking](Screen%20Shot%202026-05-12%20at%2017.14.00%20PM.jpg)
+<br>
+<img src="Screen Shot 2026-05-12 at 17.14.00 PM.jpg" alt="Vehicle Tracking" width="800"/>
 
 ### 3. Crosswalk Recognition
 Detects pedestrian zebra crossings by analyzing specific geometric and high-contrast patterns within a targeted Region of Interest (ROI).
 * **Algorithm:** Scans for white↔black pixel transitions to identify "stripy" regions. Validates bounding boxes based on minimum white pixel coverage, consecutive row/column transitions, and aspect ratio constraints.
 
 **Crosswalk Identification:**
-![Crosswalk Detection](Screen%20Shot%202026-05-12%20at%2017.15.17%20PM.jpg)
+<br>
+<img src="Screen Shot 2026-05-12 at 17.15.17 PM.jpg" alt="Crosswalk Detection" width="800"/>
 
 ---
 
@@ -66,8 +70,6 @@ python crosswalk.py
 
 # Test Complete Lane Detection Pipeline
 python lane_detection.py
-
-
 
 Author: Ido S. 
         Charlie.an
