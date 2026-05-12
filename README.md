@@ -1,35 +1,75 @@
-# lane-detection
-# 🚗 Lane & Object Detection with OpenCV
+# 🚗 ADAS Computer Vision Pipeline: Lane, Vehicle & Crosswalk Detection
 
-This project demonstrates computer vision techniques for **lane detection**, **crosswalk detection**, and basic **vehicle detection** using Python and OpenCV. It processes dashcam-style videos to identify relevant traffic elements, forming the foundation for advanced driver-assistance systems (ADAS).
+This repository contains a modular Computer Vision pipeline developed in Python and OpenCV. Designed as a foundational prototype for Advanced Driver-Assistance Systems (ADAS), the project processes dashcam footage to extract and track critical traffic elements in real-time without relying on high-overhead deep learning inference. 
+
+---
+
+## 🎯 Core Features & Visual Demonstrations
+
+### 1. Robust Lane Tracking (Day & Night Conditions)
+Extracts and tracks lane boundaries using an optimized spatial pipeline. The system maintains stability across varying lighting conditions using a deque-based history buffer to smooth polynomial fits across frames.
+* **Techniques Used:** CLAHE contrast enhancement, HSL/HSV color masking, Canny Edge Detection, Hough Transform, and 2nd-degree sliding-window polynomial fitting.
+
+**Daytime Detection:**
+![Daytime Lane Detection](Screen%20Shot%202026-05-12%20at%2017.14.21%20PM.jpg)
+
+**Nighttime Detection:**
+![Nighttime Lane Detection](Screen%20Shot%202026-05-12%20at%2017.14.45%20PM.jpg)
+
+### 2. Vehicle Detection & Proximity Estimation
+Identifies moving vehicles and estimates their real-world distance to simulate forward collision warnings.
+* **Detection & Tracking:** Utilizes MOG2 Background Subtraction combined with morphological operations (opening/closing) to isolate moving foreground objects. A custom Centroid Tracking algorithm assigns unique IDs to maintain object permanence.
+* **Distance Estimation:** Employs a pinhole camera model, utilizing a fixed focal length and real-world vehicle height approximations to calculate distance in meters. Displays threat levels dynamically (Warning vs. Danger).
+
+**Vehicle Proximity Tracking:**
+![Vehicle Tracking](Screen%20Shot%202026-05-12%20at%2017.14.00%20PM.jpg)
+
+### 3. Crosswalk Recognition
+Detects pedestrian zebra crossings by analyzing specific geometric and high-contrast patterns within a targeted Region of Interest (ROI).
+* **Algorithm:** Scans for white↔black pixel transitions to identify "stripy" regions. Validates bounding boxes based on minimum white pixel coverage, consecutive row/column transitions, and aspect ratio constraints.
+
+**Crosswalk Identification:**
+![Crosswalk Detection](Screen%20Shot%202026-05-12%20at%2017.15.17%20PM.jpg)
 
 ---
 
-## 🎯 Features
+## 🛠 Technical Architecture
 
-- 🛣️ **Lane Detection**: Detects and highlights lane lines in real-time.
-- 🚶 **Crosswalk Detection**: Identifies zebra crossings by finding grouped white rectangles in specific zones.
-- 🚗 **Basic Car Detection**: Implements experimental car detection from frontal dashcam footage.
-- 🧪 Modular Codebase: Each task is isolated in its own file for clarity and flexibility.
+The codebase is highly modular, allowing independent testing and execution of each core feature.
+
+| Module | Core Functionality | Algorithms / Methods |
+| :--- | :--- | :--- |
+| `lane_detection.py` | Advanced Lane Tracking | Sliding Window, Histogram Peaks, `np.polyfit` |
+| `car_detection.py` | Vehicle Tracking & Proximity | MOG2, Centroid Tracking, Pinhole Camera Model |
+| `crosswalk.py` | Zebra Crossing Detection | Binary Transition Counting, Aspect Ratio Validation |
+| `linefitting.py` / `lane_line.py`| Curve Fitting & Stabilization | Frame History Deque, Moving Average Smoothing |
+| `filters.py` | Preprocessing Pipeline | CLAHE, Color Thresholding, Gaussian Blur |
 
 ---
-| File               | Purpose                                  |
-| ------------------ | ---------------------------------------- |
-| `lanedet.py`       | Main script for lane line detection      |
-| `lane_line.py`     | Utility for tracking lane segments       |
-| `linefitting.py`   | Curve and polynomial fitting experiments |
-| `crosswalk.py`     | Independent crosswalk detection module   |
-| `car_detection.py` | Initial attempt at detecting vehicles    |
-| `filters.py`       | Image preprocessing functions            |
-| `startofwork.py`   | Early setup and experimentation          |
 
-🛠 Technologies
+## 🚀 Setup & Execution
 
-Python 3.x
-OpenCV
-NumPy
-👤 Author
+### Prerequisites
+* Python 3.x
+* OpenCV (`cv2`)
+* NumPy (`numpy`)
 
-Ido.s
-Computer Science Student | Passionate about Computer Vision
-GitHub Profile
+### Running the Modules
+Ensure your video files and scripts are placed in the root directory. You can test each system independently:
+
+```bash
+# Test Vehicle Detection and Distance Tracking
+python car_detection.py
+
+# Test Crosswalk Recognition
+python crosswalk.py
+
+# Test Complete Lane Detection Pipeline
+python lane_detection.py
+
+
+
+Author: Ido S. 
+        Charlie.an
+
+B.Sc. Computer Science | Specializing in Machine Learning & Computer Vision
