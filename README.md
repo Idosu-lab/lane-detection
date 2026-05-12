@@ -1,5 +1,4 @@
-with open("README.md", "w") as f:
-    f.write("""# 🚗 ADAS Computer Vision Pipeline: Lane, Vehicle & Crosswalk Detection
+# 🚗 ADAS Computer Vision Pipeline: Lane, Vehicle & Crosswalk Detection
 
 A modular, real-time Computer Vision pipeline built with Python and OpenCV. Designed as a prototype for Advanced Driver-Assistance Systems (ADAS), this project processes dashcam footage to extract critical traffic environment elements. It relies entirely on foundational computer vision and geometric processing techniques, providing high-speed analysis without the computational overhead of deep learning inference.
 
