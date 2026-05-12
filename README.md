@@ -1,16 +1,76 @@
-```markdown
-# 🚗 ADAS Computer Vision Pipeline: Lane, Vehicle & Crosswalk Detection
+with open("README.md", "w") as f:
+    f.write("""# 🚗 ADAS Computer Vision Pipeline: Lane, Vehicle & Crosswalk Detection
 
-This repository contains a modular Computer Vision pipeline developed in Python and OpenCV. Designed as a foundational prototype for Advanced Driver-Assistance Systems (ADAS), the project processes dashcam footage to extract and track critical traffic elements in real-time without relying on high-overhead deep learning inference. 
+A modular, real-time Computer Vision pipeline built with Python and OpenCV. Designed as a prototype for Advanced Driver-Assistance Systems (ADAS), this project processes dashcam footage to extract critical traffic environment elements. It relies entirely on foundational computer vision and geometric processing techniques, providing high-speed analysis without the computational overhead of deep learning inference.
 
-## Project Goal
+## 🎯 Project Goals
 
-- Detect and highlight lane lines in real-time across varying lighting conditions
-- Identify moving vehicles and estimate proximity to simulate forward collision warnings
-- Detect pedestrian zebra crossings using geometric and high-contrast pattern analysis
-- Establish a modular foundation for future integration with machine learning classifiers
+- **Robust Lane Tracking:** Detect and highlight lane boundaries under varying lighting conditions (day and night).
+- **Vehicle Proximity Simulation:** Identify moving vehicles, track them across frames, and estimate their real-world distance to issue forward collision warnings.
+- **Crosswalk Recognition:** Detect pedestrian zebra crossings using deterministic geometric pattern analysis.
 
-## Project Structure
+---
+
+## ⚙️ Core Modules & Methodology
+
+### 1. Lane Detection (Day & Night)
+The lane detection module utilizes a multi-step spatial pipeline designed to isolate lane markings regardless of environmental lighting.
+
+**How it works:**
+1. **Pre-processing:** Applies CLAHE (Contrast Limited Adaptive Histogram Equalization) to balance lighting, particularly useful for nighttime footage.
+2. **Color Masking:** Converts the frame to the HSV color space to dynamically mask white and yellow hues.
+3. **Edge & Line Extraction:** Extracts a Region of Interest (ROI) (typically the bottom 40-60% of the frame), applies Gaussian Blurring, and runs Canny Edge Detection.
+4. **Hough Transform & Polynomial Fitting:** Uses `cv2.HoughLinesP` to find line segments. Segments are filtered by slope to discard horizontal noise. The remaining points are fitted to a mathematical polynomial (either linear or 2nd-degree, depending on the module).
+5. **Temporal Smoothing:** A rolling `deque` buffer averages the polynomial coefficients over the last 10 frames to prevent jitter and stabilize the projected lane overlay.
+
+**Visual Results:**
+
+![Daytime Lane Detection](figures/lane_day.jpg)
+*Daytime conditions: Clear extraction of lane boundaries with stabilized overlay.*
+
+![Nighttime Lane Detection](figures/lane_night.jpg)
+*Nighttime conditions: Successful lane tracking despite high contrast and low visibility.*
+
+---
+
+### 2. Vehicle Detection & Proximity Estimation
+This module identifies moving vehicles in the forward path and calculates their distance to simulate a collision warning system.
+
+**How it works:**
+1. **Background Subtraction:** Uses the MOG2 (Mixture of Gaussians) background subtractor to isolate moving foreground objects.
+2. **Morphological Filtering:** Applies iterative closing and opening operations with an elliptical kernel (9x9) to merge fragmented vehicle parts into solid blobs.
+3. **Shape Profiling:** Contours are heavily filtered based on physical vehicle constraints:
+   - *Area:* Discarding noise (too small) and the ego-hood (too large).
+   - *Aspect Ratio (0.5 to 4.0):* Ensuring the shape resembles a car's rear profile.
+   - *Extent & Solidity:* Ensuring the bounding box is densely packed with foreground pixels.
+4. **Centroid Tracking:** A custom object tracker calculates the centroid of each bounding box. It associates new detections to existing tracks if they fall within a specific pixel radius (80px), enforcing object permanence. Objects must be tracked for several consecutive frames to be "confirmed."
+5. **Distance Estimation:** Utilizes a pinhole camera model. By assuming a fixed real-world vehicle height (1.5 meters) and a constant focal length, the system calculates distance dynamically: `Distance = (Focal Length * Real Height) / BoundingBox Height`.
+
+**Visual Results:**
+
+![Vehicle Tracking and Proximity](figures/car_tracking.jpg)
+*Real-time vehicle ID assignment and distance estimation (Warning ranges are color-coded).*
+
+---
+
+### 3. Crosswalk Recognition
+The crosswalk detector is designed to identify the high-frequency alternating contrast patterns of zebra crossings within the ego-vehicle's path.
+
+**How it works:**
+1. **Targeted ROI:** Isolates the bottom half of the frame where crosswalks will appear.
+2. **White Masking:** Isolates bright white pixels in the HSV color space.
+3. **Transition Analysis (1D Signal Processing):** Scans the ROI row by row, counting the number of transitions from black to white. A row is flagged as "stripy" if it exceeds a threshold of 15 transitions.
+4. **Geometric Validation:** If 40 consecutive rows are marked as "stripy", a bounding box is generated.
+5. **Column Validation:** The bounded region is further verified by scanning vertically (columns) to ensure the presence of distinct stripes, confirming the presence of a crosswalk rather than a solid white line or noise.
+
+**Visual Results:**
+
+![Crosswalk Detection](figures/crosswalk_detection.jpg)
+*Detection of high-frequency white/black transitions identifying the crosswalk zone.*
+
+---
+
+## 📁 Project Structure
 
 ```text
 lane-detection/
@@ -18,90 +78,56 @@ lane-detection/
 │   ├── miamifirstbasic.avi               # Source dashcam video
 │   └── miamifirstbasic2.avi              # Source dashcam video
 ├── figures/
-│   ├── lane_day.jpg                      # Daytime lane detection example
-│   ├── lane_night.jpg                    # Nighttime lane detection example
-│   ├── car_tracking.jpg                  # Vehicle proximity tracking example
-│   └── crosswalk_detection.jpg           # Crosswalk recognition example
+│   ├── lane_day.jpg                      
+│   ├── lane_night.jpg                    
+│   ├── car_tracking.jpg                  
+│   └── crosswalk_detection.jpg           
 ├── src/
-│   ├── lane_detection.py                 # Main script for lane line detection
-│   ├── lane_line.py                      # Utility for tracking lane segments
-│   ├── linefitting.py                    # Curve and polynomial fitting
-│   ├── crosswalk.py                      # Independent crosswalk detection module
-│   ├── car_detection.py                  # Vehicle tracking and distance estimation
-│   ├── filters.py                        # Image preprocessing functions
-│   ├── lanedet.py                        # Alternate lane detection implementation
-│   └── startofwork.py                    # Early setup and ROI cropping
+│   ├── lane_detection.py                 # Core lane tracking script
+│   ├── lane_line.py                      # Lane smoothing and temporal history
+│   ├── linefitting.py                    # Curve and polynomial math
+│   ├── crosswalk.py                      # Crosswalk detection logic
+│   ├── car_detection.py                  # Vehicle tracking & distance math
+│   ├── filters.py                        # Pre-processing (CLAHE, HSV)
+│   ├── lanedet.py                        # Alternative lane algorithm
+│   └── startofwork.py                    # Early ROI cropping scripts
 ├── README.md
 └── requirements.txt
 
-```
+🚀 How to Run
+Prerequisites
 
-## Core Features & Visual Demonstrations
+Ensure you have Python 3.x installed along with the required libraries.
+Bash
 
-### 1. Robust Lane Tracking (Day & Night Conditions)
-
-Extracts and tracks lane boundaries using an optimized spatial pipeline. The system maintains stability across varying lighting conditions using a deque-based history buffer to smooth polynomial fits across frames.
-
-* **Techniques Used:** CLAHE contrast enhancement, HSL/HSV color masking, Canny Edge Detection, Hough Transform, and 2nd-degree sliding-window polynomial fitting.
-
-**Daytime Detection:**
-
-**Nighttime Detection:**
-
-### 2. Vehicle Detection & Proximity Estimation
-
-Identifies moving vehicles and estimates their real-world distance to simulate forward collision warnings.
-
-* **Detection & Tracking:** Utilizes MOG2 Background Subtraction combined with morphological operations (opening/closing) to isolate moving foreground objects. A custom Centroid Tracking algorithm assigns unique IDs to maintain object permanence.
-* **Distance Estimation:** Employs a pinhole camera model, utilizing a fixed focal length and real-world vehicle height approximations to calculate distance in meters. Displays threat levels dynamically (Warning vs. Danger).
-
-**Vehicle Proximity Tracking:**
-
-### 3. Crosswalk Recognition
-
-Detects pedestrian zebra crossings by analyzing specific geometric and high-contrast patterns within a targeted Region of Interest (ROI).
-
-* **Algorithm:** Scans for white↔black pixel transitions to identify "stripy" regions. Validates bounding boxes based on minimum white pixel coverage, consecutive row/column transitions, and aspect ratio constraints.
-
-**Crosswalk Identification:**
-
-## How to Run
-
-### Setup
-
-```bash
 pip install opencv-python numpy
 
-```
+Execution
 
-Ensure your video files are placed in the root directory or `data/` folder (update paths in the scripts accordingly). You can test each system independently:
+Place your dashcam videos in the root or data/ directory. Run the modules independently to view specific ADAS features:
 
-### Run Vehicle Detection and Distance Tracking
+Run Vehicle Detection & Distance Tracking:
+Bash
 
-```bash
 python src/car_detection.py
 
-```
+(Press p during runtime to print live contour and shape metrics to the console).
 
-### Run Crosswalk Recognition
+Run Crosswalk Recognition:
+Bash
 
-```bash
 python src/crosswalk.py
 
-```
+(Press p to print row/column transition statistics).
 
-### Run Complete Lane Detection Pipeline
+Run Complete Lane Detection Pipeline:
+Bash
 
-```bash
 python src/lane_detection.py
 
-```
+👨‍💻 Authors
 
-## Author
+    Ido S.
 
-* Ido S.
-* Charlie. A.N
+    Charlie. A.N
 
-```
-
-```
